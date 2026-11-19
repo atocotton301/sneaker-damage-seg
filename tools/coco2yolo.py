@@ -23,6 +23,7 @@ def main():
     ap.add_argument("--max-side", type=int, default=0,
                     help="shrink images so the long side is at most this many pixels (0 = keep). "
                          "Labels are normalized, so they stay valid; use it to cut upload size.")
+    ap.add_argument("--quality", type=int, default=95, help="JPEG quality of the exported images")
     args = ap.parse_args()
 
     splits, img_dir, out = Path(args.splits), Path(args.images), Path(args.out)
@@ -48,7 +49,7 @@ def main():
             saved = img.convert("RGB")
             if args.max_side and max(W, H) > args.max_side:
                 saved.thumbnail((args.max_side, args.max_side), Image.LANCZOS)
-            saved.save(out / "images" / s / f"{stem}.jpg", quality=95)
+            saved.save(out / "images" / s / f"{stem}.jpg", quality=args.quality)
             lines = []
             for a in anns.get(im["id"], []):
                 seg = a.get("segmentation")
