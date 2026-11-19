@@ -14,11 +14,20 @@ Usage:
 """
 import argparse
 import json
+import os
 import re
 import shutil
 import tempfile
 import zipfile
 from pathlib import Path
+
+
+def long_path(p):
+    """On Windows, prefix \\\\?\\ so paths over 260 characters still work."""
+    p = str(Path(p).resolve())
+    if os.name == "nt" and not p.startswith("\\\\?\\"):
+        return "\\\\?\\" + p
+    return p
 
 
 def snake(name):
@@ -31,6 +40,9 @@ def main():
     src.add_argument("--zip")
     src.add_argument("--dir", help="already unzipped export folder")
     ap.add_argument("--out", default="data")
+    ap.add_argument("--group-regex",
+                    help="regex on the ORIGINAL file name whose first group is the object id, "
+                         r"e.g. '^(?:back|front|side\d)_(\d+)' for the Shoe Defects set")
     args = ap.parse_args()
 
     tmp = None
@@ -72,10 +84,18 @@ def main():
             new_id = len(images) + 1
             id_map[im["id"]] = new_id
             src_img = af.parent / im["file_name"]
+            # Roboflow names are long; with a deep folder they pass the Windows
+            # 260-character path limit. Store a short name and keep the original.
+            short = f"rf{new_id:05d}{Path(im['file_name']).suffix.lower()}"
             if src_img.exists():
-                shutil.copy2(src_img, img_out / Path(im["file_name"]).name)
-            images.append({"id": new_id, "file_name": Path(im["file_name"]).name,
-                           "width": im.get("width"), "height": im.get("height"), "rf_split": split})
+                shutil.copyfile(long_path(src_img), long_path(img_out / short))
+            rec = {"id": new_id, "file_name": short, "original_file_name": im["file_name"],
+                   "width": im.get("width"), "height": im.get("height"), "rf_split": split}
+            if args.group_regex:
+                m = re.search(args.group_regex, im["file_name"])
+                if m:
+                    rec["group"] = f"G{m.group(1)}"
+            images.append(rec)
         for a in coco["annotations"]:
             if a["category_id"] not in local:
                 continue

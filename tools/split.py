@@ -38,6 +38,9 @@ def main():
     ap.add_argument("--out", default="data/splits")
     ap.add_argument("--near-dups", help="near_duplicates.csv from audit.py")
     ap.add_argument("--group-regex", default=DEFAULT_GROUP_REGEX)
+    ap.add_argument("--max-hamming", type=int, default=20,
+                    help="only merge near-duplicate pairs at or below this distance; "
+                         "check pairs by eye first (10 suited the Shoe Defects set)")
     ap.add_argument("--ratios", default="0.7,0.15,0.15")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -59,7 +62,8 @@ def main():
     uf = UnionFind()
     img_group = {}
     for im in coco["images"]:
-        g = group_of(im["file_name"], args.group_regex) or f"nogroup:{im['file_name']}"
+        # A "group" field in the COCO image (set by import_roboflow.py) wins over the file name.
+        g = im.get("group") or group_of(im["file_name"], args.group_regex) or f"nogroup:{im['file_name']}"
         img_group[im["id"]] = g
         uf.find(g)
     merged = 0
@@ -67,6 +71,8 @@ def main():
         name_to_group = {Path(im["file_name"]).as_posix(): img_group[im["id"]] for im in coco["images"]}
         with open(args.near_dups, encoding="utf-8-sig") as f:
             for row in csv.DictReader(f):
+                if int(row["hamming"]) > args.max_hamming:
+                    continue
                 ga, gb = name_to_group.get(row["file_a"]), name_to_group.get(row["file_b"])
                 if ga and gb and uf.find(ga) != uf.find(gb):
                     uf.union(ga, gb)
