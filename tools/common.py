@@ -7,7 +7,20 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageOps
 
-CLASSES = ["heel_lining_damage", "sole_separation"]
+DEFAULT_CLASSES = ["heel_lining_damage", "sole_separation"]
+
+
+def _load_classes():
+    """Class list: a classes.txt in the working folder (one name per line) overrides the default."""
+    p = Path("classes.txt")
+    if p.exists():
+        names = [l.strip() for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+        if names:
+            return names
+    return list(DEFAULT_CLASSES)
+
+
+CLASSES = _load_classes()
 
 # Known spellings that should map to a canonical class name.
 ALIASES = {
@@ -29,7 +42,10 @@ DEFAULT_GROUP_REGEX = r"^(S\d+)_"
 def normalize_class(name):
     """Return (canonical_name or None, normalized_key)."""
     key = re.sub(r"[\s\-]+", "_", name.strip().lower())
-    return ALIASES.get(key), key
+    if key in CLASSES:
+        return key, key
+    canon = ALIASES.get(key)
+    return (canon if canon in CLASSES else None), key
 
 
 def group_of(file_name, pattern=DEFAULT_GROUP_REGEX):

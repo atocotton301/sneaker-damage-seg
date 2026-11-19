@@ -41,6 +41,16 @@ python tools/coco2yolo.py --splits toy/splits --images toy/images --out toy/yolo
 3. `data/images/`와 `data/annotations.json`으로 정리한 뒤 0번 명령에서 `toy`를 `data`로 바꿔 실행합니다.
 4. audit의 `error`는 모두 고치고 다음 단계로 갑니다. `warn`은 읽어 보고 판단합니다.
 
+**공개 데이터로 시작하기:** Roboflow Universe의 [Segmentation of Shoe Defects](https://universe.roboflow.com/shoe-defect-detection/segmentation-of-shoe-defects)
+(CC BY 4.0, 마모·변색·흠집 3종)를 **COCO Segmentation** 형식으로 내려받은 뒤:
+
+```bash
+python tools/import_roboflow.py --zip <내려받은 zip> --out data
+```
+
+Roboflow가 나눠 둔 train/valid/test를 하나로 합치고, 이 키트의 그룹·근접중복 기준으로 다시 나눕니다.
+실제 클래스 이름은 `classes.txt`에 저장되어 모든 도구가 그 이름을 씁니다(지우면 기본 2종으로 돌아감).
+
 ## 2. Colab에서 학습 (④)
 
 `data/yolo` 폴더를 Google Drive에 올린 뒤 Colab(T4 GPU)에서:

@@ -4,3 +4,4 @@ runs/
 reports/
 __pycache__/
 *.pt
+classes.txt
