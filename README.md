@@ -51,6 +51,55 @@ python tools/import_roboflow.py --zip <내려받은 zip> --out data
 Roboflow가 나눠 둔 train/valid/test를 하나로 합치고, 이 키트의 그룹·근접중복 기준으로 다시 나눕니다.
 실제 클래스 이름은 `classes.txt`에 저장되어 모든 도구가 그 이름을 씁니다(지우면 기본 2종으로 돌아감).
 
+## 실제 데이터 결과: Segmentation of Shoe Defects v16
+
+공개 데이터([Roboflow Universe](https://universe.roboflow.com/shoe-defect-detection/segmentation-of-shoe-defects), CC BY 4.0)로 ①~③을 돌린 결과입니다.
+원본 이미지와 라벨은 저장소에 포함하지 않습니다.
+
+```bash
+python tools/import_roboflow.py --zip "Segmentation of Shoe Defects.v16i.coco-segmentation.zip" \
+    --out data --group-regex '^(?:back|front|side\d)_(\d+)'
+python tools/audit.py --images data/images --coco data/annotations.json --out data/reports/audit
+python tools/split.py --coco data/annotations.json \
+    --near-dups data/reports/audit/near_duplicates.csv --max-hamming 10 --out data/splits
+python tools/coco2yolo.py --splits data/splits --images data/images --out data/yolo
+```
+
+**데이터 규모:** 이미지 1,983장, 다각형 5,736개, 클래스 3종(abrasions 1,896 / discoloration 1,906 / scars 1,934). 라벨이 하나도 없는 이미지 707장.
+
+### 발견 1. 파일 이름의 숫자가 신발 번호
+
+Roboflow 파일 이름(`back_552_png.rf.….jpg`)의 숫자는 신발 번호입니다. `back_552`, `front_552`, `side1_552`, `side2_552`는 같은 신발을 네 방향에서 찍은 사진이고, 신발은 모두 597켤레입니다.
+이 번호를 무시하고 사진 단위로 나누면 같은 신발이 학습(앞모습)과 시험(옆모습)에 동시에 들어가 점수가 부풀려집니다. 그래서 `--group-regex`로 번호를 그룹으로 씁니다.
+
+### 발견 2. 번호만으로는 부족: 같은 신발이 다른 번호로도 저장됨
+
+256비트 dHash 거리 10 이하인 36쌍은 **모두 서로 다른 번호**였습니다(예: `back_354`, `back_355`, `back_356`은 같은 신발의 연속 촬영).
+사진을 직접 비교해 기준을 정했습니다.
+
+| 거리 | 눈으로 본 결과 | 처리 |
+|---|---|---|
+| 0~8 | 같은 신발, 같은 각도 | 한 그룹으로 합침 |
+| 9~11 | 같은 모델·같은 색이라 애매 | 누수 방지를 위해 합침 (`--max-hamming 10`) |
+| 12 이상 | 색이 다른 다른 신발 | 합치지 않음 |
+
+거리 20(기본값)을 그대로 쓰면 같은 모델의 다른 신발이 줄줄이 이어져 239장짜리 묶음이 생깁니다. 데이터마다 사진을 보고 기준을 정해야 합니다.
+
+### 분할 결과
+
+| 분할 | 이미지 | 신발 묶음 | abrasions | discoloration | scars |
+|---|---:|---:|---:|---:|---:|
+| train | 1,363 | 353 | 1,366 | 1,340 | 1,339 |
+| val | 311 | 109 | 263 | 260 | 326 |
+| test | 309 | 112 | 267 | 306 | 269 |
+
+어떤 신발 번호도 두 분할에 걸치지 않습니다.
+
+### 발견 3. 손상이 매우 작고, 빠진 라벨이 있음
+
+- 손상 박스 면적은 이미지 면적의 중앙값 **0.03%**, 74%가 0.1% 미만입니다. 원본이 가로 3,000px 이상이라 `imgsz=640`으로 줄이면 많은 손상이 몇 픽셀만 남습니다. 입력 크기 비교 실험이 중요합니다.
+- 라벨을 원본 위에 다시 그려 보면 위치는 정확하지만, 바로 옆의 비슷한 얼룩이나 큰 찢어짐이 라벨 없이 남은 사진이 있습니다. 모델이 이런 곳을 찾으면 평가상 오탐으로 잡히므로 오탐 사례는 사진을 직접 확인합니다.
+
 ## 2. Colab에서 학습 (④)
 
 `data/yolo` 폴더를 Google Drive에 올린 뒤 Colab(T4 GPU)에서:

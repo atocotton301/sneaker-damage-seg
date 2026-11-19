@@ -34,6 +34,13 @@ def main():
     def issue(sev, kind, file, detail=""):
         issues.append({"severity": sev, "kind": kind, "file": file, "detail": detail})
 
+    # A "group" field in the COCO images (set by import_roboflow.py) wins over the file name.
+    coco = load_coco(args.coco) if args.coco else None
+    coco_group = {}
+    if coco:
+        coco_group = {im["file_name"].replace("\\", "/"): im["group"]
+                      for im in coco["images"] if im.get("group")}
+
     # --- images on disk
     files = sorted(p for p in img_dir.rglob("*") if p.suffix.lower() in IMAGE_EXTS)
     rows, hashes = [], []
@@ -45,7 +52,7 @@ def main():
             issue("error", "unreadable_image", rel, str(e))
             continue
         w, h = img.size
-        g = group_of(rel, args.group_regex)
+        g = coco_group.get(rel) or group_of(rel, args.group_regex)
         rows.append({"file": rel, "width": w, "height": h, "exif_orientation": orient,
                      "group": g or "", "sha256": sha256(p)})
         hashes.append(dhash(img))
@@ -78,8 +85,7 @@ def main():
 
     # --- COCO checks
     label_stats = {}
-    if args.coco:
-        coco = load_coco(args.coco)
+    if coco:
         disk = {r["file"]: r for r in rows}
         coco_names = {im["file_name"].replace("\\", "/") for im in coco["images"]}
         for im in coco["images"]:
