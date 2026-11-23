@@ -42,7 +42,10 @@ def main():
              "--tile", args.tile, "--overlap", args.overlap])
 
     weights = runs / name / "weights" / "best.pt"
-    if not weights.exists():
+    # best.pt is saved mid-training too, so count finished epochs in results.csv instead.
+    csv = runs / name / "results.csv"
+    done = len(csv.read_text().strip().splitlines()) - 1 if csv.exists() else 0
+    if done < args.epochs:
         last = runs / name / "weights" / "last.pt"
         if last.exists():  # resume an interrupted run
             run(["yolo", "segment", "train", f"resume={last}"])
