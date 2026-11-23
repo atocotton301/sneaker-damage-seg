@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from eval_report import iou, read_objects  # noqa: E402
 
 # name -> imgsz for Ultralytics test val. None = tiled run, evaluated only from stitched predictions.
-RUNS = {"base_640": 640, "size_1024": 1024, "tile_640": None}
+RUNS = {"base_640": 640, "size_1024": 1024, "tile_640": None, "tile_640_e60": None}
 CONFS = [0.25, 0.35, 0.5, 0.65]
 
 
