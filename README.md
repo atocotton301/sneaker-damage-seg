@@ -100,11 +100,26 @@ Roboflow 파일 이름(`back_552_png.rf.….jpg`)의 숫자는 신발 번호입�
 - 손상 박스 면적은 이미지 면적의 중앙값 **0.03%**, 74%가 0.1% 미만입니다. 원본이 가로 3,000px 이상이라 `imgsz=640`으로 줄이면 많은 손상이 몇 픽셀만 남습니다. 입력 크기 비교 실험이 중요합니다.
 - 라벨을 원본 위에 다시 그려 보면 위치는 정확하지만, 바로 옆의 비슷한 얼룩이나 큰 찢어짐이 라벨 없이 남은 사진이 있습니다. 모델이 이런 곳을 찾으면 평가상 오탐으로 잡히므로 오탐 사례는 사진을 직접 확인합니다.
 
-### 첫 모델 결과 (yolov8n-seg, 640px, 50 epoch)
+### 모델 결과 (yolov8n-seg, 50 epoch): 입력 640 vs 1024
 
-test 309장 기준 **Mask mAP50 0.066**, Mask Recall 0.137. 클래스별로는 변색(discoloration) 0.095, 마모(abrasions) 0.057, 흠집(scars) 0.046입니다.
-정밀도(0.2~0.4)보다 재현율이 훨씬 낮아, 작은 손상을 놓치는 것이 가장 큰 문제입니다. 다음 실험은 입력 크기를 키우거나 타일로 나눠 원본 해상도를 살리는 쪽입니다.
-자세한 수치와 해석은 [docs/실험기록.md](docs/실험기록.md)에 있습니다.
+![640 vs 1024 비교](docs/images/compare_640_1024.png)
+
+| | base_640 | size_1024 |
+|---|---:|---:|
+| val Mask mAP50 | 0.101 | **0.164** |
+| test 찾아낸 손상 (TP, 842개 중) | 46 | **71** |
+| test 오탐 (FP) | 85 | 124 |
+
+입력을 640에서 1024로 키우자 val mAP가 약 1.6배가 됐습니다. 손상이 작아서 축소하면 사라진다는 가설과 맞습니다.
+다만 재현율이 여전히 0.1 안팎이라 대부분을 놓칩니다. 다음은 원본을 잘라 축소 없이 학습하는 타일 방식입니다.
+640 단독 test mAP, 해석, 다음 실험은 [docs/실험기록.md](docs/실험기록.md)에 있습니다.
+
+그림은 `tools/plot_results.py`로 다시 그릴 수 있습니다.
+
+```bash
+python tools/plot_results.py --run base_640 runs/base_640/results.csv runs/base_640_report/summary.txt \
+    --run size_1024 runs/size_1024/results.csv runs/size_1024_report/summary.txt --out compare.png
+```
 
 ## 2. Colab에서 학습 (④)
 
