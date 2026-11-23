@@ -19,7 +19,8 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, str(Path(__file__).parent))
 from eval_report import iou, read_objects  # noqa: E402
 
-RUNS = {"base_640": 640, "size_1024": 1024}
+# name -> imgsz for Ultralytics test val. None = tiled run, evaluated only from stitched predictions.
+RUNS = {"base_640": 640, "size_1024": 1024, "tile_640": None}
 CONFS = [0.25, 0.35, 0.5, 0.65]
 
 
@@ -28,7 +29,7 @@ def ultralytics_test(runs_dir, data_yaml):
     out = {}
     for name, imgsz in RUNS.items():
         w = runs_dir / name / "weights" / "best.pt"
-        if not w.exists():
+        if imgsz is None or not w.exists():
             continue
         r = YOLO(str(w)).val(data=data_yaml, split="test", imgsz=imgsz, plots=False,
                              verbose=False, project=str(runs_dir), name=f"{name}_test", exist_ok=True)
