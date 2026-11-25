@@ -1,17 +1,46 @@
 # sneaker-damage-seg: 운동화 손상 탐지 데이터셋·모델 파이프라인
 
-운동화 사진에서 손상 위치를 찾는 분할(segmentation) 모델을 만들기 위한 데이터 점검부터 평가까지의 전체 흐름입니다.
-대상 클래스는 **뒤꿈치 안감 손상(`heel_lining_damage`)** 과 **밑창 들뜸(`sole_separation`)** 입니다.
+운동화 사진에서 마모·변색·흠집을 찾는 분할(segmentation) 모델을 **데이터 점검 → 라벨 검수 → 누수 없는 분할 → 학습 → 오탐·누락 분석**까지 혼자 끝까지 만든 프로젝트입니다.
+모델 점수를 올리는 것보다 **믿을 수 있는 데이터셋과 평가**를 만드는 데 집중했습니다.
 
-| 단계 | 도구 | 상태 |
+## 한눈에 보기
+
+| | |
+|---|---|
+| 데이터 | 공개 신발 결함 데이터 1,983장, 손상 다각형 5,736개 (3종: 마모·변색·흠집) |
+| 기간 · 역할 | 2026.11 · 단독 (도구 개발, 실험 설계, Colab 학습, 분석) |
+| 기술 | Python, COCO, YOLOv8-seg (Ultralytics), dHash, PIL, matplotlib, Google Colab |
+
+**데이터에서 찾고 고친 것**
+- **같은 신발이 학습과 시험에 섞이는 문제**: 파일 이름의 숫자가 신발 번호(597켤레)라는 걸 찾아 신발 단위로 나눴습니다. 번호가 달라도 같은 신발인 사진 36쌍은 이미지 해시로 찾아 합쳤고, 기준(거리 10)은 사진을 직접 비교해 정했습니다.
+- **손상이 너무 작음**: 손상 면적 중앙값이 이미지의 0.03%라, 사진을 줄이면 손상이 사라진다는 가설을 세우고 실험으로 확인했습니다.
+- **빠진 라벨**: 오탐 사진을 하나씩 보니 상당수가 실제 자국인데 라벨이 없었습니다. 숫자만 보고 모델을 탓하지 않고 원인을 평가 기준·빠진 라벨·진짜 오탐으로 나눴습니다.
+
+**실험 결과** (test 309장, 손상 842개, IoU 0.5, conf 0.25)
+
+| 실험 | 바꾼 것 | 찾은 손상 | 재현율 | 정밀도 |
+|---|---|---:|---:|---:|
+| base_640 | 기준 | 46 | 0.055 | 0.35 |
+| size_1024 | 입력 크기 1024 | 71 | 0.084 | 0.36 |
+| tile_640 | 원본을 640 조각으로 잘라 학습·추론 | **158** | **0.188** | 0.31 |
+
+![conf 기준별 정밀도·재현율](docs/images/conf_sweep.png)
+
+한 실험에 하나만 바꿨고, 모델 선택은 val로만, test는 실험마다 마지막에 한 번만 봤습니다. 타일 방식으로 재현율을 3.4배(0.055 → 0.188) 올렸지만 가죽 결의 작은 점까지 짚어 오탐도 늘었습니다. 그래서 "사람이 다시 확인하는 검사면 타일, 자동 판정이면 1024 + conf 0.35"처럼 쓰임에 따라 고르도록 정리했습니다. 상세 기록은 [docs/실험기록.md](docs/실험기록.md)에 있습니다.
+
+**한계와 다음 단계**: 재현율이 아직 0.2 미만이라 실사용 수준은 아닙니다. 손상 없는 조각 비율을 늘려 오탐 줄이기(진행 중), 라벨 재검수 후 재평가, 학습 길이 늘리기를 다음 순서로 둡니다.
+
+## 도구 구성
+
+| 단계 | 도구 | 하는 일 |
 |---|---|---|
-| ① 데이터 정리 | `tools/audit.py` | 완료, 가짜 데이터로 검증 |
-| ② 라벨 품질 관리 | `docs/라벨_기준서_초안.md`, CVAT | 기준서 초안 완료 |
-| ③ 학습 데이터 구성 | `tools/split.py`, `tools/coco2yolo.py` | 완료, 가짜 데이터로 검증 |
-| ④ 모델 개발 | 아래 Colab 명령 | 실제 데이터 필요 |
-| ⑤ 평가 및 인계 | `tools/eval_report.py` | 완료, 가짜 예측으로 검증 |
+| ① 데이터 정리 | `tools/import_roboflow.py`, `tools/audit.py` | 합치기, 중복·EXIF 회전·누락 파일·클래스 이름 변형·근접 중복 찾기 |
+| ② 라벨 품질 관리 | `docs/라벨_기준서_초안.md` | 라벨 기준과 검수 순서 |
+| ③ 학습 데이터 구성 | `tools/split.py`, `tools/coco2yolo.py`, `tools/tile_yolo.py` | 신발 단위 분할, YOLO 변환, 타일 자르기 |
+| ④ 모델 개발 | `notebooks/train_colab.ipynb`, `tools/run_tile_experiment.py` | Colab 학습, 끊기면 이어서 |
+| ⑤ 평가 | `tools/eval_report.py`, `tools/test_eval.py`, `tools/tiled_predict.py` | 클래스·크기별 TP/FP/FN, conf 기준표, 오탐 사진 모음 |
 
-필요한 것: Python 3.10+, `pip install pillow numpy` (학습은 Colab에서 `ultralytics`).
+필요한 것: Python 3.10+, `pip install pillow numpy matplotlib` (학습은 Colab에서 `ultralytics`).
 
 ## 0. 가짜 데이터로 전체 흐름 먼저 보기 (GPU 없이 1분)
 
@@ -147,41 +176,23 @@ python tools/plot_conf_sweep.py --sweep runs/conf_sweep.json --out conf_sweep.pn
 
 ## 2. Colab에서 학습 (④)
 
-`data/yolo` 폴더를 Google Drive에 올린 뒤 Colab(T4 GPU)에서:
+`notebooks/train_colab.ipynb`를 Colab(GPU)에서 위에서부터 실행합니다. 데이터는 Drive에 7MB 조각으로 올려 두고 노트북이 합친 뒤 SHA256으로 확인합니다. 학습 결과는 Drive에 저장되어 런타임이 끊겨도 남습니다.
 
-```python
-!pip install -q ultralytics
-from google.colab import drive; drive.mount('/content/drive')
-%cd /content/drive/MyDrive/sneaker-damage-seg
-# data.yaml의 path를 Colab 경로로 바꿔 줍니다
-!sed -i "s#^path: .*#path: /content/drive/MyDrive/sneaker-damage-seg/data/yolo#" data/yolo/data.yaml
+타일 실험은 한 줄로 자르기 → 학습 → 통사진 예측 → 평가까지 돌고, 끊기면 마지막 epoch부터 이어 갑니다.
 
-# 기준 모델
-!yolo segment train model=yolov8n-seg.pt data=data/yolo/data.yaml imgsz=640 epochs=50 seed=0 name=base_640
-
-# 시험 데이터 평가 (클래스별 P, R, mAP)
-!yolo segment val model=runs/segment/base_640/weights/best.pt data=data/yolo/data.yaml split=test
-
-# 오탐·누락 분석용 예측 저장
-!yolo segment predict model=runs/segment/base_640/weights/best.pt source=data/yolo/images/test save_txt=True save_conf=True name=pred_base
-!python tools/eval_report.py --labels data/yolo/labels/test --preds runs/segment/pred_base/labels --out reports/eval_base_640
+```bash
+python tools/run_tile_experiment.py --runs /content/drive/MyDrive/sneaker-damage-seg/runs
+python tools/run_tile_experiment.py --runs ... --empty-ratio 0.6   # 손상 없는 조각을 더 많이
 ```
 
-## 3. 비교 실험 계획 (작은 손상과 밑창 오탐 줄이기)
+## 3. 실험 규칙
 
-한 번에 하나만 바꿉니다. 모델 선택은 `val`로만 하고, `test`는 마지막에 한 번만 봅니다.
-
-| 실험 | 바꾸는 것 | 확인할 것 |
-|---|---|---|
-| base_640 | 기준 | 클래스별 P/R, 크기별 recall |
-| size_1024 | `imgsz=1024` | 작은 안감 손상 recall이 오르는지 |
-| no_aug | `mosaic=0 fliplr=0` | 증강이 밑창 오탐을 늘리는지 |
-| neg_more | 정상 사진 비율 늘림 | 정상 사진 오탐(`negative_image_fp`)이 줄어드는지 |
-
-결과는 `reports/실험기록.md`에 표로 남깁니다: 실험 이름, 바꾼 것, seed, val mAP50(M), test는 최종 1개만.
+- 한 번에 하나만 바꿉니다. 모델 선택은 `val`로만 하고, `test`는 실험마다 마지막에 한 번만 봅니다.
+- 타일 학습의 val 점수는 조각 단위라 다른 실험과 비교하지 않습니다. 비교는 test 통사진 기준 `eval_report.py`와 conf 기준표로 합니다.
+- 결과는 [docs/실험기록.md](docs/실험기록.md)에 실험 이름, 바꾼 것, seed, val, test 순으로 남깁니다.
 
 ## 4. 알아 둘 점
 
-- `eval_report.py`는 다각형의 **박스**로 매칭합니다. 밑창 들뜸처럼 가늘고 긴 손상은 박스가 몇 픽셀만 어긋나도 IoU가 크게 떨어지므로, 공식 지표는 ultralytics `val`의 mask mAP를 쓰고 이 리포트는 어떤 사진이 틀렸는지 찾는 용도로 씁니다.
-- 근접 중복 기준(`--near-dup-distance 20`)은 256비트 중 다른 비트 수입니다. 배경이 같은 매장 사진이 많으면 오탐이 늘 수 있으니 `near_duplicates.csv`를 몇 쌍 직접 열어 보고 조정합니다.
+- `eval_report.py`는 다각형의 **박스**로 매칭합니다. 가늘고 긴 손상(흠집 등)은 박스가 몇 픽셀만 어긋나도 IoU가 크게 떨어지므로, 공식 지표는 ultralytics `val`의 mask mAP를 쓰고 이 리포트는 어떤 사진이 틀렸는지 찾는 용도로 씁니다.
+- 근접 중복 거리는 256비트 해시 중 다른 비트 수입니다. 이 데이터에서는 사진을 직접 비교해 10으로 정했습니다(`split.py --max-hamming 10`). 데이터가 바뀌면 `near_duplicates.csv`를 몇 쌍 열어 보고 다시 정합니다.
 - 자동 초안(GPT·SAM) 라벨은 사람 검수 전까지 test에 넣지 않습니다.
